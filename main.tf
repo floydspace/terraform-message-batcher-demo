@@ -7,6 +7,8 @@ locals {
   }
 }
 
+provider "archive" {}
+
 provider "aws" {
   profile = "default"
   region  = var.region
@@ -39,4 +41,73 @@ resource "aws_sqs_queue" "default_queue" {
 resource "aws_sqs_queue" "deadletter_queue" {
   name = "${local.service_name}-dlq-${var.stage}"
   tags = local.aws_default_tags
+}
+
+resource "aws_lambda_function" "queue_message" {
+  function_name    = "${local.service_name}-queue-message-${var.stage}"
+  role             = aws_iam_role.queue_message.arn
+  filename         = data.archive_file.queue_message.output_path
+  source_code_hash = data.archive_file.queue_message.output_base64sha256
+  handler          = "app.handler"
+  runtime          = "python3.8"
+  tags             = local.aws_default_tags
+
+  environment {
+    variables = {
+      TABLE_NAME = aws_dynamodb_table.default.id
+    }
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.queue_message, aws_cloudwatch_log_group.queue_message]
+}
+
+data "archive_file" "queue_message" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambdas/queue_message"
+  output_path = "${path.cwd}/.deployment/queue_message.zip"
+}
+
+resource "aws_iam_role" "queue_message" {
+  name = "${local.service_name}-queue-message-${var.stage}-lambdaRole"
+
+  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+
+  inline_policy {
+    name   = "${local.service_name}-queue-message-${var.stage}-lambdaPolicy"
+    policy = data.aws_iam_policy_document.queue_message.json
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "queue_message" {
+  role       = aws_iam_role.queue_message.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+}
+
+resource "aws_cloudwatch_log_group" "queue_message" {
+  name = "/aws/lambda/${local.service_name}-queue-message-${var.stage}"
+}
+
+data "aws_iam_policy_document" "queue_message" {
+  statement {
+    actions   = ["dynamodb:DeleteItem"]
+    resources = [aws_dynamodb_table.default.arn]
+  }
+}
+
+data "aws_iam_policy_document" "assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "queue_message" {
+  event_source_arn = aws_sqs_queue.default_queue.arn
+  function_name    = aws_lambda_function.queue_message.arn
+  batch_size       = 1
+  depends_on       = [aws_iam_role.queue_message]
 }
