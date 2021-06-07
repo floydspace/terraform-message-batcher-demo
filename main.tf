@@ -7,8 +7,6 @@ locals {
   }
 }
 
-provider "archive" {}
-
 provider "aws" {
   profile = "default"
   region  = var.region
@@ -43,139 +41,58 @@ resource "aws_sqs_queue" "deadletter_queue" {
   tags = local.aws_default_tags
 }
 
-resource "aws_lambda_function" "queue_message" {
+module "queue_message_lambda" {
+  source = "./modules/aws_lambda"
+
   function_name    = "${local.service_name}-queue-message-${var.stage}"
-  role             = aws_iam_role.queue_message.arn
-  filename         = data.archive_file.queue_message.output_path
-  source_code_hash = data.archive_file.queue_message.output_base64sha256
   handler          = "app.handler"
-  runtime          = "python3.8"
   tags             = local.aws_default_tags
-
-  environment {
-    variables = {
-      TABLE_NAME = aws_dynamodb_table.default.id
-    }
-  }
-
-  depends_on = [aws_iam_role_policy_attachment.queue_message, aws_cloudwatch_log_group.queue_message]
-}
-
-data "archive_file" "queue_message" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambdas/queue_message"
-  output_path = "${path.cwd}/.deployment/queue_message.zip"
-}
-
-resource "aws_iam_role" "queue_message" {
-  name = "${local.service_name}-queue-message-${var.stage}-lambdaRole"
-
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
-
-  inline_policy {
-    name   = "${local.service_name}-queue-message-${var.stage}-lambdaPolicy"
-    policy = data.aws_iam_policy_document.queue_message.json
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "queue_message" {
-  role       = aws_iam_role.queue_message.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
-}
-
-resource "aws_cloudwatch_log_group" "queue_message" {
-  name = "/aws/lambda/${local.service_name}-queue-message-${var.stage}"
-}
-
-data "aws_iam_policy_document" "queue_message" {
-  statement {
-    actions   = ["dynamodb:DeleteItem"]
-    resources = [aws_dynamodb_table.default.arn]
-  }
-}
-
-data "aws_iam_policy_document" "assume_role_policy" {
-  statement {
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_lambda_event_source_mapping" "queue_message" {
   event_source_arn = aws_sqs_queue.default_queue.arn
-  function_name    = aws_lambda_function.queue_message.arn
-  batch_size       = 1
-  depends_on       = [aws_iam_role.queue_message]
-}
 
-resource "aws_lambda_function" "dynamodb_stream" {
-  function_name    = "${local.service_name}-dynamodb-stream-${var.stage}"
-  role             = aws_iam_role.dynamodb_stream.arn
-  filename         = data.archive_file.dynamodb_stream.output_path
-  source_code_hash = data.archive_file.dynamodb_stream.output_base64sha256
-  handler          = "app.handler"
-  runtime          = "python3.8"
-  tags             = local.aws_default_tags
+  source_path = "${path.cwd}/lambdas/queue_message"
 
-  environment {
-    variables = {
-      QUEUE_ARN = aws_sqs_queue.default_queue.arn
-    }
+  environment_variables = {
+    TABLE_NAME = aws_dynamodb_table.default.id
   }
 
-  depends_on = [
-    aws_iam_role_policy_attachment.dynamodb_stream,
-    aws_iam_role_policy_attachment.sqs_access,
-    aws_cloudwatch_log_group.dynamodb_stream,
+  policy_statements = [
+    {
+      actions   = ["dynamodb:DeleteItem"]
+      resources = [aws_dynamodb_table.default.arn]
+    },
+    {
+      actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+      resources = ["*"]
+    },
   ]
 }
 
-data "archive_file" "dynamodb_stream" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambdas/dynamodb_stream"
-  output_path = "${path.cwd}/.deployment/dynamodb_stream.zip"
-}
+module "dynamodb_stream_lambda" {
+  source = "./modules/aws_lambda"
 
-resource "aws_iam_role" "dynamodb_stream" {
-  name = "${local.service_name}-dynamodb-stream-${var.stage}-lambdaRole"
+  function_name    = "${local.service_name}-dynamodb-stream-${var.stage}"
+  handler          = "app.handler"
+  tags             = local.aws_default_tags
+  event_source_arn = aws_dynamodb_table.default.stream_arn
 
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+  source_path = "${path.cwd}/lambdas/dynamodb_stream"
 
-  inline_policy {
-    name   = "${local.service_name}-dynamodb-stream-${var.stage}-lambdaPolicy"
-    policy = data.aws_iam_policy_document.dynamodb_stream.json
+  environment_variables = {
+    QUEUE_ARN = aws_sqs_queue.default_queue.arn
   }
-}
 
-resource "aws_iam_role_policy_attachment" "dynamodb_stream" {
-  role       = aws_iam_role.dynamodb_stream.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
-}
-
-resource "aws_iam_role_policy_attachment" "sqs_access" {
-  role       = aws_iam_role.dynamodb_stream.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSQSReadOnlyAccess"
-}
-
-resource "aws_cloudwatch_log_group" "dynamodb_stream" {
-  name = "/aws/lambda/${local.service_name}-dynamodb-stream-${var.stage}"
-}
-
-data "aws_iam_policy_document" "dynamodb_stream" {
-  statement {
-    actions   = ["sqs:SendMessage"]
-    resources = [aws_sqs_queue.default_queue.arn]
-  }
-}
-
-resource "aws_lambda_event_source_mapping" "dynamodb_stream" {
-  event_source_arn  = aws_dynamodb_table.default.stream_arn
-  function_name     = aws_lambda_function.dynamodb_stream.arn
-  starting_position = "LATEST"
-  batch_size        = 1
-  depends_on        = [aws_iam_role.dynamodb_stream]
+  policy_statements = [
+    {
+      actions   = ["sqs:SendMessage"]
+      resources = [aws_sqs_queue.default_queue.arn]
+    },
+    {
+      actions   = ["dynamodb:DescribeStream", "dynamodb:GetRecords", "dynamodb:GetShardIterator", "dynamodb:ListStreams"]
+      resources = ["*"]
+    },
+    {
+      actions   = ["sqs:GetQueueAttributes", "sqs:GetQueueUrl", "sqs:ListDeadLetterSourceQueues", "sqs:ListQueues"]
+      resources = ["*"]
+    },
+  ]
 }
