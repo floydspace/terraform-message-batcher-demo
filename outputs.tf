@@ -1,3 +1,4 @@
 output "x-api-key" {
-  value = aws_appsync_api_key.default.key
+  value     = module.appsync.appsync_api_key_key.default
+  sensitive = true
 }
