@@ -2,25 +2,7 @@ resource "aws_appsync_graphql_api" "default" {
   authentication_type = "API_KEY"
   name                = "${local.service_name}-graphql-api-${var.stage}"
 
-  schema = <<EOF
-type Mutation {
-    batchCreate(criteria: String!): Batch
-}
-
-type Batch {
-    criteria: String
-    meta: String
-}
-
-type Query {
-    batches: [Batch]
-}
-
-schema {
-    query: Query
-    mutation: Mutation
-}
-EOF
+  schema = file("graphql/schema.graphql")
 
   log_config {
     cloudwatch_logs_role_arn = aws_iam_role.default.arn

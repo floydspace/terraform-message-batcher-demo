@@ -1,0 +1,17 @@
+type Mutation {
+  batchCreate(criteria: String!): Batch
+}
+
+type Batch {
+  criteria: String
+  meta: String
+}
+
+type Query {
+  batches: [Batch]
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+}
