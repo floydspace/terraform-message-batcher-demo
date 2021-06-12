@@ -1,17 +1,24 @@
 type Mutation {
-  batchCreate(criteria: String!): Batch
+  batchCreate(criteria: String!, message: String!): Batch
+  batchRelease(criteria: String!, messages: [String]): Batch
 }
 
 type Batch {
   criteria: String
-  meta: String
+  messages: [String]
 }
 
 type Query {
   batches: [Batch]
 }
 
+type Subscription {
+  batchReleased(criteria: String!): Batch
+    @aws_subscribe(mutations: ["batchRelease"])
+}
+
 schema {
   query: Query
   mutation: Mutation
+  subscription: Subscription
 }

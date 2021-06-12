@@ -17,6 +17,9 @@ module "appsync" {
       table_name = aws_dynamodb_table.default.name
       region     = var.region
     }
+    none_datasource = {
+      type = "NONE"
+    }
   }
 
   resolvers = {
@@ -34,13 +37,31 @@ module "appsync" {
       request_template  = <<EOF
 {
     "version" : "2017-02-28",
-    "operation" : "PutItem",
+    "operation" : "UpdateItem",
     "key" : {
         "criteria" : $util.dynamodb.toDynamoDBJson($ctx.args.criteria)
     },
-    "attributeValues" : {
-        "meta": { "S" : "Hi from AppSync!" },
+    "update" : {
+        "expression" : "SET #messages = list_append(if_not_exists(#messages, :empty_list), :message)",
+        "expressionNames" : {
+            "#messages" : "messages"
+        },
+        "expressionValues" : {
+            ":message" : $util.dynamodb.toDynamoDBJson([$ctx.args.message]),
+            ":empty_list": { "L" : [] }
+        }
     }
+}
+EOF
+      response_template = "$utils.toJson($context.result)"
+    }
+
+    "Mutation.batchRelease" = {
+      data_source       = "none_datasource"
+      request_template  = <<EOF
+{
+  "version": "2017-02-28",
+  "payload": $utils.toJson($context.arguments)
 }
 EOF
       response_template = "$utils.toJson($context.result)"

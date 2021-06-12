@@ -8,11 +8,12 @@ def handler(event, context):
     event_name = event['Records'][0]['eventName']
     print(event)
 
+    deserializer = boto3.dynamodb.types.TypeDeserializer()
+
     if event_name == 'INSERT':
         boto3.resource('dynamodb')
         sqs = boto3.resource('sqs')
 
-        deserializer = boto3.dynamodb.types.TypeDeserializer()
         keys = {
             k: deserializer.deserialize(v) for k, v in event['Records'][0]['dynamodb']['Keys'].items()
         }
@@ -31,4 +32,8 @@ def handler(event, context):
         return
 
     if event_name == 'REMOVE':
-        print(event)
+        record = {
+            k: deserializer.deserialize(v) for k, v in event['Records'][0]['dynamodb']['OldImage'].items()
+        }
+
+        print(record)

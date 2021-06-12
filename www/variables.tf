@@ -1,0 +1,2 @@
+variable "stage" {}
+variable "region" {}
