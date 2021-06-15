@@ -8,10 +8,10 @@ def handler(event, context):
     event_name = event['Records'][0]['eventName']
     print(event)
 
+    boto3.resource('dynamodb')
     deserializer = boto3.dynamodb.types.TypeDeserializer()
 
     if event_name == 'INSERT':
-        boto3.resource('dynamodb')
         sqs = boto3.resource('sqs')
 
         keys = {
@@ -24,7 +24,7 @@ def handler(event, context):
 
         response = queue.send_message(
             MessageBody=json.dumps(keys, ensure_ascii=False),
-            DelaySeconds=30,
+            DelaySeconds=10,
         )
 
         print(response)
@@ -36,4 +36,36 @@ def handler(event, context):
             k: deserializer.deserialize(v) for k, v in event['Records'][0]['dynamodb']['OldImage'].items()
         }
 
-        print(record)
+        import requests
+        from requests_aws4auth import AWS4Auth
+
+        aws = boto3.session.Session()
+        session = requests.Session()
+        credentials = aws.get_credentials().get_frozen_credentials()
+        session.auth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            aws.region_name,
+            'appsync',
+            session_token=credentials.token
+        )
+        session.headers = {
+            'Content-Type': 'application/graphql',
+        }
+
+        mutation = """
+            mutation batchRelease($messages: [String]) {
+                batchRelease(criteria: "batch" messages: $messages) {
+                    criteria
+                    messages
+                }
+            }
+        """
+
+        response = session.request(
+            url=os.environ['APPSYNC_URL'],
+            method='POST',
+            json={'query': mutation, 'variables': record}
+        )
+
+        print(response.text)

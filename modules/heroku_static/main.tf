@@ -1,6 +1,3 @@
-provider "heroku" {}
-provider "local" {}
-
 resource "heroku_app" "default" {
   name   = var.name
   region = "eu"
@@ -13,17 +10,4 @@ resource "heroku_build" "default" {
   source = {
     path = var.folder
   }
-
-  depends_on = [local_file.default]
-}
-
-resource "local_file" "default" {
-  content = jsonencode({
-    clean_urls = true
-    routes = {
-      "/static/*" = "/static/"
-      "/**"       = "index.html"
-    }
-  })
-  filename = "${var.folder}/static.json"
 }

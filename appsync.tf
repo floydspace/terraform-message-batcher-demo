@@ -8,7 +8,13 @@ module "appsync" {
   log_field_log_level = "ALL"
 
   api_keys = {
-    default = null
+    default = "2021-07-01T19:00:00Z"
+  }
+
+  additional_authentication_provider = {
+    iam = {
+      authentication_type = "AWS_IAM"
+    }
   }
 
   datasources = {

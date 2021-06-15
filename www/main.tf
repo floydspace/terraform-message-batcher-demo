@@ -15,12 +15,12 @@ module "website_static" {
   source = "../modules/aws_s3_static"
 
   name   = "${local.service_name}-site-${var.stage}"
-  folder = "${path.cwd}/build"
+  folder = "${path.cwd}/build/public_html"
 }
 
-# module "website_static" {
-#   source = "./modules/heroku_static"
+# module "website_heroku" {
+#   source = "../modules/heroku_static"
 
-#   name   = "${local.service_name}-site-${var.stage}"
+#   name   = "${local.aws_default_tags.Name}-${var.stage}"
 #   folder = "${path.cwd}/build"
 # }

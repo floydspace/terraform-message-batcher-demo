@@ -78,13 +78,19 @@ module "dynamodb_stream_lambda" {
   source_path = "${path.cwd}/lambdas/dynamodb_stream"
 
   environment_variables = {
-    QUEUE_ARN = aws_sqs_queue.default_queue.arn
+    QUEUE_ARN   = aws_sqs_queue.default_queue.arn
+    APPSYNC_URL = module.appsync.appsync_graphql_api_uris.GRAPHQL
+    PYTHONPATH  = "site-packages"
   }
 
   policy_statements = [
     {
       actions   = ["sqs:SendMessage"]
       resources = [aws_sqs_queue.default_queue.arn]
+    },
+    {
+      actions   = ["appsync:GraphQL"]
+      resources = ["${module.appsync.appsync_graphql_api_arn}/*"]
     },
     {
       actions   = ["dynamodb:DescribeStream", "dynamodb:GetRecords", "dynamodb:GetShardIterator", "dynamodb:ListStreams"]

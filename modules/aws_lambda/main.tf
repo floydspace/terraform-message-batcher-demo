@@ -5,6 +5,8 @@ resource "aws_lambda_function" "default" {
   source_code_hash = data.archive_file.default.output_base64sha256
   handler          = var.handler
   runtime          = "python3.8"
+  memory_size      = 256
+  timeout          = 6
   tags             = var.tags
 
   dynamic "environment" {

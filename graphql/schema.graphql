@@ -1,15 +1,15 @@
 type Mutation {
-  batchCreate(criteria: String!, message: String!): Batch
-  batchRelease(criteria: String!, messages: [String]): Batch
+  batchCreate(criteria: String!, message: String!): Batch @aws_api_key
+  batchRelease(criteria: String!, messages: [String]): Batch @aws_iam
 }
 
-type Batch {
+type Batch @aws_iam @aws_api_key {
   criteria: String
   messages: [String]
 }
 
 type Query {
-  batches: [Batch]
+  batches: [Batch] @aws_api_key
 }
 
 type Subscription {
